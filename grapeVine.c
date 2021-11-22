@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#define MAX 80 // TODO what do
+#define MAX 128 // TODO what do
 #define PORT 8787 // like grapes on a vine :P
 #define SA struct sockaddr // TODO what do
 
@@ -30,7 +30,7 @@ void func(int sockfd) {
 
         write(sockfd, buff, sizeof(buff));
 
-        if (strncmp("exit", buff, 4) == 0) {
+        if (strncmp("bye", buff, 4) == 0) {
             printf("Server Exit...\n");
             break;
         }
