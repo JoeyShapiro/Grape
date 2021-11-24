@@ -5,23 +5,38 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+// for multi-threading
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
 
 #define MAX 128 // TODO what do
 #define PORT 8787 // like grapes on a vine :P
 #define SA struct sockaddr // TODO what do
 
+void *rec(void *vargp) {
+    int *sockfd = vargp;
+    char buff[MAX];
+    int n;
+
+    while(1) {
+        bzero(buff, MAX);
+        read(sockfd, buff, sizeof(buff));
+        printf("%s\t", buff);
+    }
+
+    return NULL;
+}
+
 // function for chat between server and client
-void func(int sockfd) {
+void *sen(void *vargp) {
+    int *sockfd = vargp;
     char buff[MAX];
     int n;
 
     // inf loop for chat
     while (1) {
-        bzero(buff, MAX);
-
-        read(sockfd, buff, sizeof(buff));
-
-        printf("From client: %s\t To client: ", buff);
         bzero(buff, MAX);
         n = 0;
 
@@ -30,16 +45,19 @@ void func(int sockfd) {
 
         write(sockfd, buff, sizeof(buff));
 
-        if (strncmp("bye", buff, 4) == 0) {
+        if (strncmp("bye", buff, 3) == 0) {
             printf("Server Exit...\n");
             break;
         }
     }
+
+    return NULL;
 }
 
 int main() {
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
+    pthread_t tid;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
@@ -73,7 +91,11 @@ int main() {
     } else
         printf("server accepted the client...\n");
     
-    func(connfd);
+    pthread_create(&tid, NULL, sen, connfd);
+    pthread_create(&tid, NULL, rec, connfd);
+    pthread_exit(NULL);
 
     close(sockfd);
+    
+    return 0;
 }

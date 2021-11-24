@@ -4,11 +4,27 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <openssl/bn.h>
+#include <arpa/inet.h>
+// for multi-threading
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
+// for TUI
+#include <ncurses.h>
 
-#define MAX 128
+#define MAX 1024
 #define PORT 8787
 #define SA struct sockaddr
 #define NBITS 256
+char msgs[] = "";
+int col, row;
+
+struct Keys {
+    BIGNUM *n, *e, *d;
+};
+
+typedef struct Keys keys;
 
 void printBN(char *msg, BIGNUM * a)
 {
@@ -19,7 +35,8 @@ void printBN(char *msg, BIGNUM * a)
     OPENSSL_free(number_str);
 }
 
-void gen_keys() {
+keys gen_keys() {
+    keys k;
     BN_CTX *ctx = BN_CTX_new();
 
     BIGNUM *p = BN_new();
@@ -53,9 +70,14 @@ void gen_keys() {
     // public key
     printBN("e =", e);
     printBN("n =", n);
+    k.e = e;
+    k.n = n;
     // private key
-    printBN("e =", e);
     printBN("d =", d);
+    k.d = d;
+    printBN("n =", n);
+
+    return k;
 }
 
 void encrypt_data(char res[], char input[]) {
@@ -66,38 +88,58 @@ void decrypt_data(char res[], char input[]) {
 
 }
 
-void func(int sockfd) {
+void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
+    int sockfd = *((int *)vargp);
     char buff[MAX];
     int n;
-    char enc[MAX];
 
+    while(1) {
+        bzero(buff, MAX);
+        read(sockfd, buff, sizeof(buff));
+        strcat(msgs, buff);
+        printf("%s\t", buff);
+        mvprintw(0,0,"%s",msgs);
+    }
+
+    return NULL;
+}
+
+// function for chat between server and client
+void *sen(void *vargp) {
+    int sockfd = *((int *)vargp);
+    char buff[MAX];
+    int n;
+
+    // inf loop for chat
     while (1) {
-        bzero(buff, sizeof(buff));
-        printf("Enter the string: ");
+        bzero(buff, MAX);
         n = 0;
 
-        // get user input
+        printf(">");
+        //mvprintw(row/2,(col-strlen(">"))/2,"%s",">");
+        //getstr(buff);
         while ((buff[n++] = getchar()) != '\n') // goes until \n
             ;
 
-        // encrypt
-        encrypt_data(enc, buff);
-
-        // send to server
         write(sockfd, buff, sizeof(buff));
-        bzero(buff, sizeof(buff));
-        read(sockfd, buff, sizeof(buff));
-        printf("From Server: %s", buff);
-        if ((strncmp(buff, "bye", 4)) == 0) {
-            printf("Client Exit...\n");
+        strcat(msgs, buff);
+
+        if (strncmp("bye", buff, 3) == 0) {
+            printf("Server Exit...\n");
             break;
         }
     }
+
+    return NULL;
 }
 
 int main() {
     int sockfd, connfd;
     struct sockaddr_in servaddr, cli;
+    keys k;
+    pthread_t tid;
+    // initscr();				/* start the curses mode */
+    // getmaxyx(stdscr,row,col);		/* get the number of rows and columns */
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
@@ -117,7 +159,14 @@ int main() {
     } else
         printf("conneted to the server...\n");
     
-    gen_keys();
-    func(sockfd);
+    k = gen_keys();
+    int *arg = malloc(sizeof(*arg));
+    *arg = sockfd;
+    pthread_create(&tid, NULL, sen, arg);
+    pthread_create(&tid, NULL, rec, arg);
+    pthread_exit(NULL);
+
     close(sockfd);
+    
+    return 0;
 }
