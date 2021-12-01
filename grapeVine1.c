@@ -133,8 +133,12 @@ int main(int argc, char *argv[]) {
                 {  
                     //set the string terminating NULL byte on the end 
                     //of the data read 
-                    buffer[valread] = '\0';  
-                    printf("User %d sent %s", sd, buffer);
+                    printf("A user sent something\n");
+                    buffer[valread] = '\0';
+                    printf("User %d sent %x", sd, buffer);
+                    for (int b = 0; b < sizeof(&buffer); b ++) {
+                        printf(" %02x", buffer[b]);
+                    }
                     send(sd , buffer , strlen(buffer) , 0 );  
                 }  
             }  
