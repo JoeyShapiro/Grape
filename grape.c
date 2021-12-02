@@ -163,7 +163,10 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
         bzero(buff, MAX);
         read(sockfd, buff, sizeof(buff));
         strcat(msgs, buff);
-        printf("%s\t", buff);
+        printf("sent:");
+        for (int b = 0; b < sizeof(&buff); b ++) {
+            printf(" %02x", buff[b]);
+        }
         //mvprintw(0,0,"%s",msgs);
     }
 

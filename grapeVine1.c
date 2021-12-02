@@ -118,7 +118,11 @@ int main(int argc, char *argv[]) {
             {  
                 //Check if it was for closing , and also read the 
                 //incoming message 
-                if ((valread = read( sd , buffer, MAX)) == 0)  
+                valread = read( sd , buffer, MAX);
+                for (int b = 0; b < sizeof(&buffer); b ++) {
+                        printf(" %02x", buffer[b]);
+                }
+                if (valread == 0)  
                 {  
                     //Somebody disconnected , get his details and print 
                     getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);  
@@ -134,13 +138,18 @@ int main(int argc, char *argv[]) {
                     //set the string terminating NULL byte on the end 
                     //of the data read 
                     printf("A user sent something\n");
+                    printf("valread %d", valread);
+                    // for (int b = 0; b < sizeof(&buffer); b ++) {
+                    //     printf(" %02x", buffer[b]);
+                    // }
                     buffer[valread] = '\0';
-                    printf("User %d sent %x", sd, buffer);
-                    for (int b = 0; b < sizeof(&buffer); b ++) {
-                        printf(" %02x", buffer[b]);
-                    }
-                    send(sd , buffer , strlen(buffer) , 0 );  
+                    //printf("User %d sent %x", sd, buffer);
+                    //for (int j=0; j<max_clients; j++)
+                    //{
+                    send(sd , buffer , strlen(buffer) , 0 ); // also sends to sender (makes sense)
+                    //}
                 }  
+                
             }  
         }  
 
