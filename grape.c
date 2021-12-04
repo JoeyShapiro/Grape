@@ -18,16 +18,60 @@
 #define SA struct sockaddr
 #define NBITS 256
 #define BLOCK 8
-char msgs[] = "";
 int col, row;
+WINDOW * sender;
+WINDOW * receiver;
 
 struct Keys {
-    BIGNUM *n, *e, *d;
+    BIGNUM *n, *e, *d, *s;
     BN_CTX *ctx;
+    int others_id;
+};
+
+struct Queue {
+    int capacity;
+    int size;
+    int front;
+    int back;
+    unsigned char elements[10][80]; // 10 strings of size 80
 };
 
 typedef struct Keys keys;
+typedef struct Queue Queue;
 keys k;
+Queue *msgs;
+
+Queue * createQueue(int s) {
+    Queue *Q;
+    Q = (Queue *) malloc(sizeof(Queue));
+    Q->size = 0;
+    Q->capacity = s;
+    Q->front = 0;
+    Q->back = -1;
+    return Q;
+}
+
+void Enqueue(Queue *Q, unsigned char *element) {
+    // if Queue is full remove front
+    if (Q->size == Q->capacity) {
+        Q->size--; // decrese size
+        Q->front++; // move front up one
+        if (Q->front == Q->capacity) {
+            Q->front = 0;
+        }
+    }
+    // add to back
+    Q->size++; // increase size
+    Q->back = Q->back+1; // move back up one
+    if (Q->back == Q->capacity) {
+        Q->back = 0;
+    }
+    strcpy(Q->elements[Q->back], element);
+}
+
+unsigned char* getQueue(Queue *Q, int i) {
+    return Q->elements[i];
+}
 
 void printBN(char *msg, BIGNUM * a)
 {
@@ -72,14 +116,14 @@ keys gen_keys() {
 
     // public key
     k.ctx = ctx;
-    printBN("e =", e);
-    printBN("n =", n);
+    //printBN("e =", e);
+    //printBN("n =", n);
     k.e = e;
     k.n = n;
     // private key
-    printBN("d =", d);
+    //printBN("d =", d);
     k.d = d;
-    printBN("n =", n);
+    //printBN("n =", n);
 
     return k;
 }
@@ -90,17 +134,25 @@ BIGNUM* gen_sec() {
     return s;
 }
 
-BIGNUM* encrypt_sec(BIGNUM *s) {
+BIGNUM* encrypt_sec(BIGNUM *pub) {
     // convert string to binary
     // do math for enc
-    printf("good2");
-    printf("good3");
-    printf("good4");
     BIGNUM *c = BN_new();
-    printf("good5");
     // c = m^e mod n
-    BN_mod_exp(c, s, k.e, k.n, k.ctx);
+    BN_mod_exp(c, k.s, k.e, pub, k.ctx);
     return c;
+}
+
+void printHex(unsigned char str[]) {
+    printf("the string (in hex) is\n");
+    for (int b = 0; b < sizeof(&str); b ++) {
+        printf(" %02x", str[b]);
+    }
+}
+
+bool startsWith(unsigned char *str, unsigned char *exp) {
+    if (strncmp(str, exp, strlen(exp)) == 0) return 1;
+    return 0;
 }
 
 unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
@@ -108,66 +160,91 @@ unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
     BIGNUM *m = BN_new();
     BIGNUM *c = BN_new();
     unsigned char newinput[sizeof(&input) + BLOCK];
-    printf("siez %d\n", sizeof(&input) + BLOCK);
-    unsigned char secret[BLOCK];
+    unsigned char secret[BLOCK] = "12345678";
     BN_bn2bin(s, secret);
 
-    for (int b = 0; b < sizeof(&input); b ++) {
-        printf(" %02x", input[b]);
-    }
     strcat(newinput, input);
     while (sizeof(&newinput) % BLOCK != 0) { // do i even need padding
         strcat(newinput, "0"); //this was "\0"
     }
 
-    for (int b = 0; b < sizeof(&newinput); b ++) {
-        printf(" %02x", newinput[b]);
-    }
-
     unsigned char *cipher = malloc(MAX);
     int i;
     int j; // set up here so it runs each one
-    int blocks = sizeof(&newinput) / BLOCK;
-    printf("%d / %d\n", sizeof(&newinput), BLOCK);
-    printf("%s newinput (%x), %s secret (%x), newinput[7] = %d\n", newinput, newinput, secret, secret, newinput[7]);
-    for (i=0; i<blocks; i++) {
-        int blockStart = blocks*i;
-        printf("blockStart = %d\n", blockStart);
-        for (j=0; j<BLOCK; j++) {
-            int cur = blockStart+j;
-            printf("cur is %d on j %d and i %d\n", cur, j, i);
-            cipher[cur] = (char)(newinput[cur] ^ secret[cur]);
-            printf("%d (%x) = %x ^ %x\n", cipher[cur], cipher[cur], newinput[cur], secret[cur]);
+    for (int i=0; i<strlen(input); i+=strlen(secret)) {
+        for(int j=0; j<strlen(secret); j++) {
+            cipher[i+j] = input[i+j] ^ secret[j];
         }
     }
-    cipher[i] = '\n';
-    BN_bin2bn(cipher, sizeof(&cipher), c);
-    printf("the cipher string (in hex) is\n");
-    for (int b = 0; b < sizeof(&cipher); b ++) {
-        printf(" %02x", cipher[b]);
-    }
+    cipher[i] = '\0';
 
     return cipher;
 }
 
-void decrypt_data(char res[], char input[]) {
+unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
+    unsigned char secret[BLOCK] = "12345678";
+    BN_bn2bin(s, secret);
 
+    unsigned char *decrypted = malloc(MAX);
+    int i;
+    int j; // set up here so it runs each one
+    for (int i=0; i<strlen(input); i+=strlen(secret)) {
+        for(int j=0; j<strlen(secret); j++) {
+            decrypted[i+j] = input[i+j] ^ secret[j];
+        }
+    } 
+    decrypted[i] = '\0';
+
+    return decrypted;
 }
 
 void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
     int sockfd = *((int *)vargp);
-    char buff[MAX];
-    int n;
+    unsigned char buff[MAX];
+    unsigned char *decrypted;
+    BIGNUM *chatter = BN_new();
 
     while(1) {
+        int i;
         bzero(buff, MAX);
         read(sockfd, buff, sizeof(buff));
-        strcat(msgs, buff);
-        printf("sent:");
-        for (int b = 0; b < sizeof(&buff); b ++) {
-            printf(" %02x", buff[b]);
+        if (startsWith(buff, "system")) {
+            char *arg = strtok(buff, " "); // remove system
+            arg = strtok(NULL, " "); // get second arg
+            int id;
+            if (startsWith(arg, "pubid")) { // getting pubid of another
+                id = atoi(strtok(NULL, " "));
+                k.others_id = id;
+                arg = strtok(NULL, " ");
+                BN_hex2bn(&chatter, arg);
+                //char *s = BN_bn2hex(k.s);
+                BIGNUM *enc_key = encrypt_sec(chatter);
+                char secret[400]; // this cant be *
+                char *str_key = BN_bn2hex(enc_key);
+                sprintf(secret, "system secret %d %s", id, str_key);
+                write(sockfd, secret, strlen(secret));
+                sprintf(decrypted, "server: now chatting with user %d", id);
+            }
+            if (startsWith(arg, "secret")) { // getting secret of another
+                int oid = atoi(strtok(NULL, " "));
+                k.others_id = oid;
+                char *got_key = strtok(NULL, " "); // but this has to be * (same data)?
+                BN_hex2bn(&k.s, got_key);
+                sprintf(decrypted, "server: now chatting with user %d", oid);
+            }
         }
-        //mvprintw(0,0,"%s",msgs);
+        if (startsWith(buff, "server: ")) {
+            decrypted = buff;
+        } else {
+            decrypted = decrypt_data(buff, k.s);
+        }
+        Enqueue(msgs, decrypted);
+
+        for (i=0; i<10; i++) {
+            mvwprintw(receiver, i+1, 1, getQueue(msgs, i));
+        }
+        wrefresh(receiver);
+        //printHex(buff);
     }
 
     return NULL;
@@ -179,37 +256,44 @@ void *sen(void *vargp) {
     char buff[MAX];
     int n;
     unsigned char *cipher;
-    BIGNUM *secret = BN_new();
-    secret = gen_sec();
+    k.s = gen_sec();
+    char str[80];
+    echo();
 
     // inf loop for chat
     while (1) {
         bzero(buff, MAX);
         n = 0;
 
-        //printf(">");
-        //mvprintw(row/2,(col-strlen(">"))/2,"%s",">");
-        //getstr(buff);
-        printf("good-2");
-        while ((buff[n++] = getchar()) != '\n') // goes until \n
-            ;
+        box(sender, 105, 105);
 
-        printf("good-1");
-        cipher = encrypt_data(buff, secret);
-        printf("chipher main is\n");
-        for (int b = 0; b < sizeof(&cipher); b ++) {
-            printf(" %02x", cipher[b]);
+        // allow user input
+        mvwprintw(sender, 1, 1, "                                                  "); // TODO find better way
+        mvwprintw(sender, 1, 1, "P:");
+        wrefresh(sender);
+        wgetstr(sender, str);
+
+        // check not to long
+        if (strlen(str) > 80) {
+            continue;
         }
-        printf("good");
+        strcat(buff, str);
+        if (startsWith(buff, "chat ")) {
+            write(sockfd, buff, sizeof(buff));
+            continue;
+        }
+        if (startsWith(buff, "list")) {
+            //write(sockfd, buff, sizeof(buff));
+            continue;
+        }
+
+        cipher = encrypt_data(buff, k.s);
+        //printHex(cipher);
         char number_str[MAX];
-        //BN_bn2bin(cipher, number_str);
-        printf("good1\n");
-        printf("numberstr %x\n", number_str);
         
         write(sockfd, cipher, sizeof(cipher));
-        strcat(msgs, cipher);
 
-        if (strncmp("bye", buff, 3) == 0) {
+        if (startsWith(buff, "bye")) {
             printf("Server Exit...\n");
             break;
         }
@@ -218,10 +302,17 @@ void *sen(void *vargp) {
     return NULL;
 }
 
+// void *reDraw(void *vargp) {
+
+
+//     return NULL;
+// }
+
 int main() {
     int sockfd, connfd;
     struct sockaddr_in servaddr, cli;
     pthread_t tid;
+    msgs = createQueue(10);
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
@@ -241,18 +332,46 @@ int main() {
     } else
         printf("conneted to the server...\n");
     
+    // CONNECTION ALL GOOD
+    // start ncurses mode
+    initscr();
+    cbreak();
+    noecho(); // disable input (password mode)
+
+    // init ncurses variables
+    int row, col, y, x;
+    getmaxyx(stdscr,row,col);
+
+    // more init
+    y = x = 0;
+    receiver = newwin(row-3, col, y, x);
+    y = row-3;
+    sender = newwin(row/8, col, y, x);
+
+    // create the windows
+    refresh();
+    box(receiver, 104, 104);
+    box(sender, 105, 105);
+    wrefresh(receiver);
+    wrefresh(sender);
+
     k = gen_keys();
     int *arg = malloc(sizeof(*arg));
     *arg = sockfd;
+    char init[400];
+    strcat(init, "user ");
+    strcat(init, BN_bn2hex(k.n));
+    write(sockfd, init, sizeof(init));
 
-    //initscr();				/* start the curses mode */
-    //getmaxyx(stdscr,row,col);		/* get the number of rows and columns */
-
-    pthread_create(&tid, NULL, sen, arg);
     pthread_create(&tid, NULL, rec, arg);
+    pthread_create(&tid, NULL, sen, arg); // must be second
+    //pthread_create(&tid, NULL, reDraw, arg); // must be third
     pthread_exit(NULL);
 
+    // ending
+    getch();
     close(sockfd);
+    endwin();
     
     return 0;
 }

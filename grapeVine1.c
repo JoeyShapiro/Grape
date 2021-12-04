@@ -8,21 +8,31 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+// for bool
+#include <ncurses.h>
 
 #define TRUE 1
 #define FALSE 0
 #define PORT 8787
 #define MAX 1024
 
+bool startsWith(unsigned char *str, unsigned char *exp) {
+    if (strncmp(str, exp, strlen(exp)) == 0) return 1;
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int opt = TRUE;
     int master_socket, addrlen, new_socket, client_socket[30], max_clients = 30, activity, i, valread, sd;
     int max_sd;
     struct sockaddr_in address;
+    char publicKeys[30][256];
 
     char buffer[1025];
     fd_set readfds;
-    char *message = "ECHO Daemon v1.0 \r\n";
+    char *message = "server: ECHO Daemon v1.0 \r\n";
 
     for (i=0; i<max_clients; i++) {
         client_socket[i] = 0;
@@ -119,9 +129,44 @@ int main(int argc, char *argv[]) {
                 //Check if it was for closing , and also read the 
                 //incoming message 
                 valread = read( sd , buffer, MAX);
+                printf("\nA user sent something\n");
+                if (startsWith(buffer, "chat ")) {
+                    char *user = strtok(buffer, " ");
+                    user = strtok(NULL, " ");
+                    int id = atoi(user);
+                    char *pub = publicKeys[id];
+                    printf("user %d asked for %d's pubkey", sd, id);
+                    char pubid[500];
+                    sprintf(pubid, "system pubid %d %s", id, pub);
+                    send(sd , pubid , strlen(pubid) , 0 );
+                    continue;
+                }
+                if (startsWith(buffer, "user ")) {
+                    char *pub = strtok(buffer, " ");
+                    pub = strtok(NULL, " ");
+                    strcpy(publicKeys[sd], pub);
+                    printf("user %s", pub);
+                    continue;
+                }
+                if (startsWith(buffer, "system")) {
+                    char *arg = strtok(buffer, " ");
+                    char *subarg = strtok(NULL, " ");
+                    int id = atoi(strtok(NULL, " "));
+                    char *enc_sec = strtok(NULL, " ");
+                    char msg[400];
+                    sprintf(msg, "%s %s %d %s", arg, subarg, sd, enc_sec);
+                    printf("user %d sent a key to user %d", sd, id);
+                    send(id, msg, strlen(msg), 0);
+                    continue;
+                }
+                if (startsWith(buffer, "list")) {
+
+                }
                 for (int b = 0; b < sizeof(&buffer); b ++) {
                         printf(" %02x", buffer[b]);
                 }
+
+
                 if (valread == 0)  
                 {  
                     //Somebody disconnected , get his details and print 
@@ -137,12 +182,10 @@ int main(int argc, char *argv[]) {
                 {  
                     //set the string terminating NULL byte on the end 
                     //of the data read 
-                    printf("A user sent something\n");
-                    printf("valread %d", valread);
+                    
                     // for (int b = 0; b < sizeof(&buffer); b ++) {
                     //     printf(" %02x", buffer[b]);
                     // }
-                    buffer[valread] = '\0';
                     //printf("User %d sent %x", sd, buffer);
                     //for (int j=0; j<max_clients; j++)
                     //{
