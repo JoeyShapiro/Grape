@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
                     user = strtok(NULL, " ");
                     int id = atoi(user);
                     char *pub = publicKeys[id];
-                    printf("user %d asked for %d's pubkey", sd, id);
+                    printf("user %d asked for %d's pubkey\n", sd, id);
                     char pubid[500];
                     sprintf(pubid, "system pubid %d %s", id, pub);
                     send(sd , pubid , strlen(pubid) , 0 );
@@ -145,19 +145,35 @@ int main(int argc, char *argv[]) {
                     char *pub = strtok(buffer, " ");
                     pub = strtok(NULL, " ");
                     strcpy(publicKeys[sd], pub);
-                    printf("user %s", pub);
+                    printf("user %s\n", pub);
                     continue;
                 }
                 if (startsWith(buffer, "system")) {
                     char *arg = strtok(buffer, " ");
                     char *subarg = strtok(NULL, " ");
-                    int id = atoi(strtok(NULL, " "));
-                    char *enc_sec = strtok(NULL, " ");
-                    char msg[400];
-                    sprintf(msg, "%s %s %d %s", arg, subarg, sd, enc_sec);
-                    printf("user %d sent a key to user %d", sd, id);
-                    send(id, msg, strlen(msg), 0);
-                    continue;
+                    if (startsWith(subarg, "secret")) {
+                        int id = atoi(strtok(NULL, " "));
+                        char *enc_sec = strtok(NULL, " ");
+                        char msg[400];
+                        sprintf(msg, "%s %s %d %s", arg, subarg, sd, enc_sec);
+                        printf("user %d sent a key to user %d\n", sd, id);
+                        send(id, msg, strlen(msg), 0);
+                        continue;
+                    }
+                    if (startsWith(subarg, "send")) {
+                        char *id = strtok(NULL, " ");
+                        char *len = strtok(NULL, " ");
+                        char enc_msg[300]; // = strtok(NULL, " ");
+                        char msg[300];
+                        memcpy(enc_msg, &buffer[9+7], atoi(len));
+
+                        sprintf(msg, "%s %s %d %s %s", arg, subarg, sd, len, enc_msg);
+                        printf("message; %s\n",msg);
+                        send(atoi(id), msg, strlen(msg), 0);
+                        send(sd, msg, strlen(msg), 0);
+                        printf("user %d sent a message to user %s of length %d %s\n", sd, id, strlen(enc_msg), enc_msg);
+                        continue;
+                    }
                 }
                 if (startsWith(buffer, "list")) {
 

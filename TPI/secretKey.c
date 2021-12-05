@@ -37,8 +37,8 @@ int main() {
     printf("\noutput: %s length: %d\n", output, strlen(output));
 
     printf("\nBLOCK\n");
-    unsigned char secret[] = "cc";
-    unsigned char input2[] = "helloWorld";
+    unsigned char secret[] = "88";
+    unsigned char input2[] = "test";
     unsigned char cipher2[10];
     unsigned char output2[10];
 

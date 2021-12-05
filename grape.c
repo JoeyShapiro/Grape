@@ -143,6 +143,17 @@ BIGNUM* encrypt_sec(BIGNUM *pub) {
     return c;
 }
 
+BIGNUM* decrypt_sec(char *secret) {
+    // convert string to binary
+    // do math for enc
+    BIGNUM *m = BN_new();
+    BIGNUM *s = BN_new();
+    BN_hex2bn(&s, secret);
+    // m = c^d mod n
+    BN_mod_exp(m, s, k.d, k.n, k.ctx);
+    return m;
+}
+
 void printHex(unsigned char str[]) {
     printf("the string (in hex) is\n");
     for (int b = 0; b < sizeof(&str); b ++) {
@@ -155,24 +166,38 @@ bool startsWith(unsigned char *str, unsigned char *exp) {
     return 0;
 }
 
+char* subString (const char* input, int offset, int len, char* dest)
+{
+  int input_len = strlen (input);
+
+  if (offset + len > input_len)
+  {
+     return NULL;
+  }
+
+  strncpy (dest, input + offset, len);
+  return dest;
+}
+
 unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
     BN_CTX *ctx = BN_CTX_new();
     BIGNUM *m = BN_new();
     BIGNUM *c = BN_new();
-    unsigned char newinput[sizeof(&input) + BLOCK];
-    unsigned char secret[BLOCK] = "12345678";
+    unsigned char newinput[strlen(input) + BLOCK];
+    unsigned char secret[BLOCK];
+    BN_hex2bn(&s, "2A");
     BN_bn2bin(s, secret);
 
     strcat(newinput, input);
-    while (sizeof(&newinput) % BLOCK != 0) { // do i even need padding
+    while (strlen(newinput) % BLOCK != 0) { // do i even need padding
         strcat(newinput, "0"); //this was "\0"
     }
 
     unsigned char *cipher = malloc(MAX);
     int i;
     int j; // set up here so it runs each one
-    for (int i=0; i<strlen(input); i+=strlen(secret)) {
-        for(int j=0; j<strlen(secret); j++) {
+    for (i=0; i<strlen(input); i+=strlen(secret)) { // dont reinit i or j!!
+        for(j=0; j<strlen(secret); j++) {
             cipher[i+j] = input[i+j] ^ secret[j];
         }
     }
@@ -182,18 +207,22 @@ unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
 }
 
 unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
-    unsigned char secret[BLOCK] = "12345678";
+    unsigned char secret[BLOCK];
+    bzero(secret, BLOCK);
+    BN_hex2bn(&s, "2A");
     BN_bn2bin(s, secret);
 
     unsigned char *decrypted = malloc(MAX);
-    int i;
-    int j; // set up here so it runs each one
-    for (int i=0; i<strlen(input); i+=strlen(secret)) {
-        for(int j=0; j<strlen(secret); j++) {
+    bzero(decrypted, sizeof(decrypted));
+    int i = 0;
+    int j = 0; // set up here so it runs each one
+    for (i=0; i<strlen(input); i+=strlen(secret)) {
+        for(j=0; j<strlen(secret); j++) {
             decrypted[i+j] = input[i+j] ^ secret[j];
         }
     } 
     decrypted[i] = '\0';
+    Enqueue(msgs, decrypted);
 
     return decrypted;
 }
@@ -201,18 +230,24 @@ unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
 void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
     int sockfd = *((int *)vargp);
     unsigned char buff[MAX];
-    unsigned char *decrypted;
+    unsigned char tmp[MAX];
     BIGNUM *chatter = BN_new();
+    unsigned char decrypted[MAX];
 
     while(1) {
         int i;
         bzero(buff, MAX);
+        bzero(tmp, MAX);
+        bzero(decrypted, strlen(decrypted));
         read(sockfd, buff, sizeof(buff));
+
         if (startsWith(buff, "system")) {
+            memcpy(tmp, buff, sizeof(buff));
             char *arg = strtok(buff, " "); // remove system
             arg = strtok(NULL, " "); // get second arg
             int id;
             if (startsWith(arg, "pubid")) { // getting pubid of another
+                k.s = gen_sec();
                 id = atoi(strtok(NULL, " "));
                 k.others_id = id;
                 arg = strtok(NULL, " ");
@@ -221,23 +256,31 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 BIGNUM *enc_key = encrypt_sec(chatter);
                 char secret[400]; // this cant be *
                 char *str_key = BN_bn2hex(enc_key);
-                sprintf(secret, "system secret %d %s", id, str_key);
+                sprintf(secret, "system secret %d %s ", id, str_key);
                 write(sockfd, secret, strlen(secret));
-                sprintf(decrypted, "server: now chatting with user %d", id);
-            }
-            if (startsWith(arg, "secret")) { // getting secret of another
+                sprintf(decrypted, "server: now chatting with user %d %s", k.others_id, BN_bn2hex(k.s));
+            } else if (startsWith(arg, "secret")) { // getting secret of another
                 int oid = atoi(strtok(NULL, " "));
                 k.others_id = oid;
                 char *got_key = strtok(NULL, " "); // but this has to be * (same data)?
-                BN_hex2bn(&k.s, got_key);
-                sprintf(decrypted, "server: now chatting with user %d", oid);
+                k.s = decrypt_sec(got_key); // i never decrypted
+                sprintf(decrypted, "server: now chatting with user %d %s", k.others_id, BN_bn2hex(k.s));
+            } else if (startsWith(arg, "send")) {
+                char *oid = strtok(NULL, " ");
+                char *len = strtok(NULL, " ");
+                char enc_msg[300];
+                bzero(enc_msg, 300);
+                memcpy(enc_msg, &tmp[16], 5);
+                unsigned char *dec_msg = decrypt_data(enc_msg, k.s);
+                sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
             }
         }
-        if (startsWith(buff, "server: ")) {
-            decrypted = buff;
-        } else {
-            decrypted = decrypt_data(buff, k.s);
-        }
+        // if (startsWith(buff, "server: ")) {
+        //     decrypted = buff;
+        // }
+        // else {
+        //     decrypted = decrypt_data(buff, k.s);
+        // }
         Enqueue(msgs, decrypted);
 
         for (i=0; i<10; i++) {
@@ -256,7 +299,6 @@ void *sen(void *vargp) {
     char buff[MAX];
     int n;
     unsigned char *cipher;
-    k.s = gen_sec();
     char str[80];
     echo();
 
@@ -284,6 +326,18 @@ void *sen(void *vargp) {
         }
         if (startsWith(buff, "list")) {
             //write(sockfd, buff, sizeof(buff));
+            continue;
+        }
+        if (startsWith(buff, "send")) {
+            //char *arg = strtok(NULL, " ");
+            //char *msg = strtok(NULL, " ");
+            char message[300];
+            subString(buff, 5, strlen(buff)-5, message);
+            cipher = encrypt_data(message, k.s);
+            int len = strlen(message);
+            char toSend[400];
+            sprintf(toSend, "system send %d %d %s", k.others_id, len, cipher);
+            write(sockfd, toSend, strlen(toSend));
             continue;
         }
 
@@ -338,6 +392,15 @@ int main() {
     cbreak();
     noecho(); // disable input (password mode)
 
+    // check and add color
+    if(has_colors() == FALSE)
+	{	endwin();
+		printf("Your terminal does not support color\n");
+		exit(1);
+	}
+	start_color();
+    assume_default_colors(COLOR_GREEN,COLOR_MAGENTA);
+
     // init ncurses variables
     int row, col, y, x;
     getmaxyx(stdscr,row,col);
@@ -360,7 +423,7 @@ int main() {
     *arg = sockfd;
     char init[400];
     strcat(init, "user ");
-    strcat(init, BN_bn2hex(k.n));
+    strcat(init, BN_bn2hex(k.n)); // send public key of this user (I PUT K.N!!)
     write(sockfd, init, sizeof(init));
 
     pthread_create(&tid, NULL, rec, arg);
