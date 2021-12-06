@@ -12,6 +12,8 @@
 #include <pthread.h>
 // for TUI
 #include <ncurses.h>
+// for hash
+#include <openssl/sha.h>
 
 #define MAX 1024
 #define PORT 8787
@@ -213,7 +215,7 @@ unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
     BN_bn2bin(s, secret);
 
     unsigned char *decrypted = malloc(MAX);
-    bzero(decrypted, sizeof(decrypted));
+    bzero(decrypted, sizeof(decrypted)); // ZERO OUT ALL THE THINGS
     int i = 0;
     int j = 0; // set up here so it runs each one
     for (i=0; i<strlen(input); i+=strlen(secret)) {
@@ -222,9 +224,37 @@ unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
         }
     } 
     decrypted[i] = '\0';
-    Enqueue(msgs, decrypted);
 
     return decrypted;
+}
+
+void hashAndSign(char sig[], char input[]) {
+    unsigned char hash[256];
+    BIGNUM *sign = BN_new();
+    BIGNUM *h = BN_new();
+
+    SHA256(input, strlen(input), hash);
+    BN_bin2bn(hash, 256, h);
+
+    BN_mod_exp(sign, h, k.d, k.n, k.ctx);
+
+    sig = BN_bn2hex(sign);
+}
+
+bool verify(char sig[], char msg[], BIGNUM *pub) {
+    unsigned char hash[256];
+    BIGNUM *sign = BN_new();
+    BIGNUM *v = BN_new();
+    BIGNUM *h = BN_new();
+
+    SHA256(msg, strlen(msg), hash);
+    BN_bin2bn(hash, 256, h);
+    BN_hex2bn(&sign, sig);
+
+    BN_mod_exp(v, sign, k.e, pub, k.ctx);
+
+    if (BN_cmp(v, h) == 0 ) return 1;
+    return 0;
 }
 
 void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
@@ -252,7 +282,6 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 k.others_id = id;
                 arg = strtok(NULL, " ");
                 BN_hex2bn(&chatter, arg);
-                //char *s = BN_bn2hex(k.s);
                 BIGNUM *enc_key = encrypt_sec(chatter);
                 char secret[400]; // this cant be *
                 char *str_key = BN_bn2hex(enc_key);
@@ -269,9 +298,15 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 char *oid = strtok(NULL, " ");
                 char *len = strtok(NULL, " ");
                 char enc_msg[300];
+                char sig[256];
                 bzero(enc_msg, 300);
-                memcpy(enc_msg, &tmp[16], 5);
+                bzero(sig, 256);
+                memcpy(enc_msg, &tmp[16], atoi(len));
+                memcpy(sig, &tmp[17+atoi(len)], 122);
                 unsigned char *dec_msg = decrypt_data(enc_msg, k.s);
+                if(!verify(sig, dec_msg, chatter)) {
+                    sprintf(decrypted, "%d: %s is not verified", atoi(oid), dec_msg);
+                }
                 sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
             }
         }
@@ -287,7 +322,6 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
             mvwprintw(receiver, i+1, 1, getQueue(msgs, i));
         }
         wrefresh(receiver);
-        //printHex(buff);
     }
 
     return NULL;
@@ -329,20 +363,19 @@ void *sen(void *vargp) {
             continue;
         }
         if (startsWith(buff, "send")) {
-            //char *arg = strtok(NULL, " ");
-            //char *msg = strtok(NULL, " ");
             char message[300];
             subString(buff, 5, strlen(buff)-5, message);
             cipher = encrypt_data(message, k.s);
             int len = strlen(message);
             char toSend[400];
-            sprintf(toSend, "system send %d %d %s", k.others_id, len, cipher);
+            char sig[256];
+            hashAndSign(sig, message);
+            sprintf(toSend, "system send %d %d %s %s", k.others_id, len, cipher, sig);
             write(sockfd, toSend, strlen(toSend));
             continue;
         }
 
         cipher = encrypt_data(buff, k.s);
-        //printHex(cipher);
         char number_str[MAX];
         
         write(sockfd, cipher, sizeof(cipher));

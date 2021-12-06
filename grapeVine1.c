@@ -165,9 +165,11 @@ int main(int argc, char *argv[]) {
                         char *len = strtok(NULL, " ");
                         char enc_msg[300]; // = strtok(NULL, " ");
                         char msg[300];
+                        char sig[256];
                         memcpy(enc_msg, &buffer[9+7], atoi(len));
+                        memcpy(sig, &buffer[17+atoi(len)], 122);
 
-                        sprintf(msg, "%s %s %d %s %s", arg, subarg, sd, len, enc_msg);
+                        sprintf(msg, "%s %s %d %s %s %s", arg, subarg, sd, len, enc_msg, sig);
                         printf("message; %s\n",msg);
                         send(atoi(id), msg, strlen(msg), 0);
                         send(sd, msg, strlen(msg), 0);
