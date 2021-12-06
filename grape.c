@@ -187,7 +187,6 @@ unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
     BIGNUM *c = BN_new();
     unsigned char newinput[strlen(input) + BLOCK];
     unsigned char secret[BLOCK];
-    BN_hex2bn(&s, "2A");
     BN_bn2bin(s, secret);
 
     strcat(newinput, input);
@@ -211,7 +210,6 @@ unsigned char* encrypt_data(unsigned char input[], BIGNUM* s) {
 unsigned char* decrypt_data(unsigned char input[], BIGNUM *s) {
     unsigned char secret[BLOCK];
     bzero(secret, BLOCK);
-    BN_hex2bn(&s, "2A");
     BN_bn2bin(s, secret);
 
     unsigned char *decrypted = malloc(MAX);
@@ -339,6 +337,7 @@ void *sen(void *vargp) {
     // inf loop for chat
     while (1) {
         bzero(buff, MAX);
+        bzero(str, 80);
         n = 0;
 
         box(sender, 105, 105);
