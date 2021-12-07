@@ -41,21 +41,37 @@ int main(int argc, char *argv[]) {
         printf("connection with the server failed...\n");
         exit(0);
     } else
-        printf("conneted to the server...\n");\
+        printf("conneted to the server...\n");
 
     char dummy[MAX];
     bzero(dummy, MAX);
     char *spf = argv[1];
     int len = strlen(argv[2]);
     char *msg = argv[2];
-    char sig[122];
 
-    unsigned char hash[122];
+    unsigned char hash[256];
+    BIGNUM *h = BN_new();
+    char *sig = malloc(122);
+    bzero(sig, 122);
+    BIGNUM *sign = BN_new();
+
+    BN_CTX *ctx = BN_CTX_new();
+    BIGNUM *n = BN_new();
+    BIGNUM *d = BN_new();
+
+    BN_hex2bn(&n, "DCBFFE3E51F62E09CE7032E2677A78946A849DC4CDDE3A4D0CB81629242FB1A5");
+    BN_hex2bn(&d, "74D806F9F3A62BAE331FFE3F0A68AFE35B3D2E4794148AACBC26AA381CD7D30D");
+    
+    printf("creating packet with message \"%s\" by user %s\n", msg, spf);
 
     SHA256((unsigned char*) msg, strlen(msg), hash);
+    BN_bin2bn(hash, 256, h);
+    BN_mod_exp(sign, h, d, n, ctx);
+    sig = BN_bn2hex(sign);
+    printf("got hash \"%s\"\n", sig);
 
-    sprintf(dummy, "system send %s %s %s %s", spf, len, msg, hash);
-    printf("dummy: ", dummy);
+    sprintf(dummy, "system send %s %d %s %s", spf, len, msg, sig);
+    printf("dummy: %s\n", dummy);
 
     write(sockfd, dummy, sizeof(dummy));
 

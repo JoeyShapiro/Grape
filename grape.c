@@ -261,6 +261,7 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
     unsigned char tmp[MAX];
     BIGNUM *chatter = BN_new();
     unsigned char decrypted[MAX];
+    Enqueue(msgs, "https://github.com/JoeyShapiro/grape");
 
     while(1) {
         int i;
@@ -304,8 +305,9 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 unsigned char *dec_msg = decrypt_data(enc_msg, k.s);
                 if(!verify(sig, dec_msg, chatter)) {
                     sprintf(decrypted, "%d: %s is not verified", atoi(oid), dec_msg);
+                } else {
+                    sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
                 }
-                sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
             }
         }
         // if (startsWith(buff, "server: ")) {
