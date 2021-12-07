@@ -286,13 +286,13 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 char *str_key = BN_bn2hex(enc_key);
                 sprintf(secret, "system secret %d %s ", id, str_key);
                 write(sockfd, secret, strlen(secret));
-                sprintf(decrypted, "server: now chatting with user %d %s", k.others_id, BN_bn2hex(k.s));
+                sprintf(decrypted, "server: now chatting with user %d", k.others_id);
             } else if (startsWith(arg, "secret")) { // getting secret of another
                 int oid = atoi(strtok(NULL, " "));
                 k.others_id = oid;
                 char *got_key = strtok(NULL, " "); // but this has to be * (same data)?
                 k.s = decrypt_sec(got_key); // i never decrypted
-                sprintf(decrypted, "server: now chatting with user %d %s", k.others_id, BN_bn2hex(k.s));
+                sprintf(decrypted, "server: now chatting with user %d", k.others_id);
             } else if (startsWith(arg, "send")) {
                 char *oid = strtok(NULL, " ");
                 char *len = strtok(NULL, " ");
@@ -305,9 +305,8 @@ void *rec(void *vargp) { // TODO can i just pass int, or must it be void*
                 unsigned char *dec_msg = decrypt_data(enc_msg, k.s);
                 if(!verify(sig, dec_msg, chatter)) {
                     sprintf(decrypted, "%d: %s is not verified", atoi(oid), dec_msg);
-                } else {
-                    sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
                 }
+                sprintf(decrypted, "%d: %s", atoi(oid), dec_msg);
             }
         }
         // if (startsWith(buff, "server: ")) {
